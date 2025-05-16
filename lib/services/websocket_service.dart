@@ -8,7 +8,6 @@ class WebSocketService {
     final String? token = await SecureStorage().retrieveToken();
 
     if (token == null) {
-      print("No token found");
       return;
     }
 

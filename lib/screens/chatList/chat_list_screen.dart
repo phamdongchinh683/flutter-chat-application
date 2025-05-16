@@ -23,9 +23,7 @@ class _ChatScreenState extends State<ChatListScreen> {
 
   Future<void> _initSocket() async {
     final String? token = await SecureStorage().retrieveToken();
-
     if (token == null || token.isEmpty) {
-      print("No token found");
       return;
     }
 
@@ -35,7 +33,7 @@ class _ChatScreenState extends State<ChatListScreen> {
 
       _webSocketService.socket.emit('myChats', {'userId': decodedToken['sub']});
 
-      _webSocketService.socket.on('onChats', (data) {
+      _webSocketService.socket.on('onConversationList', (data) {
         if (data['status'] != 'success') {
           return;
         } else {
@@ -71,7 +69,6 @@ class _ChatScreenState extends State<ChatListScreen> {
                 final String conversationName = chat['conversationName'];
 
                 return ListTile(
-                  
                   title: Text(chat['conversationName']),
                   onTap: () {
                     Navigator.push(

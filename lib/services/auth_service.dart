@@ -4,7 +4,7 @@ import 'package:flutter_chat_application/models/user_model.dart';
 import 'package:http/http.dart' as http;
 
 class AuthService {
-  static const String _baseUrl = 'http://localhost:3030/api/auth';
+  static const String _baseUrl = 'http://localhost:3030/api/v1/auth';
 
   static Future<Map<String, dynamic>> signup(User user) async {
     try {
@@ -26,18 +26,16 @@ class AuthService {
     }
   }
 
- Future<String> login(String email, String password) async {
-  final Uri loginUrl = Uri.parse('$_baseUrl/login');
+  Future<String> login(String email, String password) async {
+    final Uri loginUrl = Uri.parse('$_baseUrl/login');
 
-  final response = await http.post(
-    loginUrl,
-    headers: {'Content-Type': 'application/json'},
-    body: jsonEncode({'email': email, 'password': password}),
-  );
-  
-   final responseData = jsonDecode(response.body);
+    final response = await http.post(
+      loginUrl,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+
+    final responseData = jsonDecode(response.body);
     return responseData['data'];
-}
-
-
+  }
 }

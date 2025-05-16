@@ -28,73 +28,76 @@ class _AuthLoginState extends State<SigninScreen> {
     super.dispose();
   }
 
-Future<void> _login() async {
-  final email = _emailController.text.trim();
-  final password = _passwordController.text.trim();
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
-  if (email.isEmpty) {
+    if (email.isEmpty) {
+      setState(() {
+        errorMessage = 'Email not empty';
+      });
+      return;
+    }
+
+    final emailRegex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
+    if (!emailRegex.hasMatch(email)) {
+      setState(() {
+        errorMessage = 'Please provide a valid email.';
+      });
+      return;
+    }
+
+    if (password.length < 9 || password.length > 20) {
+      setState(() {
+        errorMessage = 'Password must be between 9 and 20 characters.';
+      });
+      return;
+    }
+
     setState(() {
-      errorMessage = 'Email must not be empty.';
+      isLoading = true;
+      errorMessage = '';
     });
-    return;
-  }
 
-  final emailRegex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
-  if (!emailRegex.hasMatch(email)) {
-    setState(() {
-      errorMessage = 'Please provide a valid email.';
-    });
-    return;
-  }
-
-  if (password.length < 9 || password.length > 20) {
-    setState(() {
-      errorMessage = 'Password must be between 9 and 20 characters.';
-    });
-    return;
-  }
-
-  setState(() {
-    isLoading = true;
-    errorMessage = '';
-  });
-
-  try {
-    final result = await _authService.login(email, password);
-
-    if (result.contains("exist") || result.contains("incorrect")) {
-       AuthAlert(
-        title: "Failed",
-        description: result,
-        type: AlertType.error,
-      ).show(context);
-      
-    } else {
-     const AuthAlert(
-        title: "Login Success",
-        description: "You have logged in successfully!",
-        type: AlertType.success,
-      ).show(context);
+    try {
+      final result = await _authService.login(email, password);
+      if (result.contains("exist") ||
+          result.contains("incorrect") ||
+          result.contains("Device confirmation requested") ||
+          result.contains(
+              "Device is pending please contact admin verify device")) {
+        AuthAlert(
+          title: "Failed",
+          description: result,
+          type: AlertType.error,
+        ).show(context);
+      } else {
+        const AuthAlert(
+          title: "Login Success",
+          description: "You have logged in successfully!",
+          type: AlertType.success,
+        ).show(context);
 
         await SecureStorage().saveToken(result);
 
-      Timer(
-        const Duration(seconds: 1),
-        () => Navigator.pushReplacementNamed(context, '/chats'),
-      );
+        Timer(
+          const Duration(seconds: 1),
+          () => Navigator.pushReplacementNamed(context, '/chats'),
+        );
+      }
+    } catch (e) {
+      AuthAlert(
+        title: "Failed",
+        description: e.toString(),
+        type: AlertType.error,
+      ).show(context);
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
-  } catch (e) {
-    AuthAlert(
-      title: "Failed",
-      description: e.toString(),
-      type: AlertType.error,
-    ).show(context);
-  } finally {
-    setState(() {
-      isLoading = false;
-    });
   }
-}
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -177,4 +180,3 @@ Future<void> _login() async {
     );
   }
 }
-
