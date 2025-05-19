@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 class AuthService {
   static const String _baseUrl = 'http://localhost:3030/api/v1/auth';
 
-  static Future<Map<String, dynamic>> signup(User user) async {
+  Future<Map<String, dynamic>> signup(User user) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/register'),
@@ -22,7 +22,7 @@ class AuthService {
         return {'message': errorBody['message']};
       }
     } catch (e) {
-      return {'message': 'An error occurred: ${e.toString()}'};
+      return {'message': e};
     }
   }
 
