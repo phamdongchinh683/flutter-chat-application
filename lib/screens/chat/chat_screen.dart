@@ -17,9 +17,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _messages = [];
-  late String myEmail;
-  late String myId;
+  String? _myEmail;
+  String? _myId;
   bool _isLoading = false;
+  bool _isConnected = false;
 
   @override
   void initState() {
@@ -41,110 +42,181 @@ class _ChatScreenState extends State<ChatScreen> {
     final String? token = await SecureStorage().retrieveToken();
 
     if (token == null || token.isEmpty) {
-      print("No token found");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Authentication error. Please login again.')),
+        );
+      }
       return;
     }
 
     try {
       Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
-      myEmail = decodedToken['email'];
-      myId = decodedToken['sub'];
+      _myEmail = decodedToken['email'];
+      _myId = decodedToken['sub'];
 
       await _webSocketService.initSocket();
+      _isConnected = true;
 
       _webSocketService.socket.emit('joinConversation', {
         'conversationId': widget.id,
       });
 
-      _webSocketService.socket.off('onMessageHistory');
-      _webSocketService.socket.on('onMessageHistory', (data) {
-        if (data['status'] != 'success') {
-          return;
-        } else {
-          setState(() {
-            _messages = List<Map<String, dynamic>>.from(data['data']);
-          });
-
-          _scrollToBottom();
-        }
-      });
-
-      _webSocketService.socket.off('onMessage');
-      _webSocketService.socket.on('onMessage', (data) {
-        print(data);
-        if (data['status'] != 'success') {
-          return;
-        } else if (data['data'].length > 2) {
-          setState(() {
-            _messages.add(data['data']);
-          });
-
-          _scrollToBottom();
-        } else if (data['data'].length == 2) {
-          setState(() {
-            _messages.firstWhere((message) =>
-                    message['id'] == data['data']['id'])['messageText'] =
-                data['data']['messageText'];
-          });
-
-          _scrollToBottom();
-        } else if (data['data'].length == 1) {
-          setState(() {
-            _messages
-                .removeWhere((message) => message['id'] == data['data']['id']);
-          });
-        }
-      });
+      _setupSocketListeners();
     } catch (e) {
-      print(e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Connection error: ${e.toString()}')),
+        );
+      }
+      print('Socket initialization error: $e');
     }
+  }
+
+  void _setupSocketListeners() {
+    _webSocketService.socket.off('onMessageHistory');
+    _webSocketService.socket.on('onMessageHistory', (data) {
+      if (!mounted) return;
+
+      if (data['status'] != 'success') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load message history')),
+        );
+        return;
+      }
+
+      setState(() {
+        _messages = List<Map<String, dynamic>>.from(data['data']);
+      });
+      _scrollToBottom();
+    });
+
+    _webSocketService.socket.off('onMessage');
+    _webSocketService.socket.on('onMessage', (data) {
+      if (!mounted) return;
+
+      if (data['status'] != 'success') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to receive message')),
+        );
+        return;
+      }
+
+      setState(() {
+        if (data['data'].length > 2) {
+          _messages.add(data['data']);
+        } else if (data['data'].length == 2) {
+          final messageIndex = _messages
+              .indexWhere((message) => message['id'] == data['data']['id']);
+          if (messageIndex != -1) {
+            _messages[messageIndex]['messageText'] =
+                data['data']['messageText'];
+          }
+        } else if (data['data'].length == 1) {
+          _messages
+              .removeWhere((message) => message['id'] == data['data']['id']);
+        }
+      });
+      _scrollToBottom();
+    });
   }
 
   void _updateMessage(String messageId, String messageText) {
+    if (!_isConnected || _myId == null) return;
+
     setState(() {
-      _messages.firstWhere(
-          (message) => message['id'] == messageId)['messageText'] = messageText;
+      _isLoading = true;
     });
 
-    final message = {
-      'id': messageId,
-      'user_id': myId,
-      'userEmail': myEmail,
-      'conversation_id': widget.id,
-      'message_text': _messageController.text.trim(),
-    };
+    try {
+      final messageIndex =
+          _messages.indexWhere((message) => message['id'] == messageId);
 
-    _webSocketService.socket.emit('updateMessage', message);
+      if (messageIndex != -1) {
+        setState(() {
+          _messages[messageIndex]['messageText'] = messageText;
+        });
+      }
+
+      final message = {
+        'id': messageId,
+        'user_id': _myId,
+        'userEmail': _myEmail,
+        'conversation_id': widget.id,
+        'message_text': messageText,
+      };
+
+      _webSocketService.socket.emit('updateMessage', message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update message: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _deleteMessage(String messageId) {
+    if (!_isConnected) return;
+
     setState(() {
-      _messages.removeWhere((message) => message['id'] == messageId);
+      _isLoading = true;
     });
 
-    final message = {
-      'id': messageId,
-      'conversationId': widget.id,
-    };
+    try {
+      setState(() {
+        _messages.removeWhere((message) => message['id'] == messageId);
+      });
 
-    _webSocketService.socket.emit('deleteMessage', message);
+      final message = {
+        'id': messageId,
+        'conversationId': widget.id,
+      };
+
+      _webSocketService.socket.emit('deleteMessage', message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete message: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) {
-      return;
+    if (!_isConnected || _myId == null || _myEmail == null) return;
+    if (_messageController.text.trim().isEmpty) return;
+
+    try {
+      final newMessage = {
+        'userId': _myId,
+        'userEmail': _myEmail,
+        'conversationId': widget.id,
+        'messageText': _messageController.text.trim(),
+      };
+
+      _webSocketService.socket.emit('newMessage', newMessage);
+      _messageController.clear();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send message: ${e.toString()}')),
+        );
+      }
     }
-
-    final newMessage = {
-      'userId': myId,
-      'userEmail': myEmail,
-      'conversationId': widget.id,
-      'messageText': _messageController.text.trim(),
-    };
-
-    _webSocketService.socket.emit('newMessage', newMessage);
-
-    _messageController.clear();
   }
 
   void _scrollToBottom() {
@@ -155,6 +227,16 @@ class _ChatScreenState extends State<ChatScreen> {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _webSocketService.socket.off('onMessageHistory');
+    _webSocketService.socket.off('onMessage');
+    _webSocketService.dispose();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -171,7 +253,7 @@ class _ChatScreenState extends State<ChatScreen> {
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final message = _messages[index];
-                final myMessage = message['userEmail'] == myEmail;
+                final myMessage = message['userEmail'] == _myEmail;
                 final messageText = message['messageText'];
 
                 return Align(
@@ -215,7 +297,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                       title: Text(
                                         myMessage
                                             ? 'Your Message'
-                                            : '${message['userEmail']}\'s Message',
+                                            : '${message['userEmail']}',
                                         style: TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
@@ -238,14 +320,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                               color: Colors.grey,
                                             ),
                                           ),
-                                          if (message['isEdited'] == true)
-                                            Text(
-                                              'Edited: ${message['updatedAt'] ?? 'Unknown'}',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
                                         ],
                                       ),
                                       actions: <Widget>[
