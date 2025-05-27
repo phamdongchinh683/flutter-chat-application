@@ -11,6 +11,7 @@ class RouterApp {
   static const String chats = '/chats';
   static const String profile = '/profile';
   static const String chat = '/chat';
+  static const String videoCall = '/video-call';
   static Map<String, WidgetBuilder> routes = {
     signIn: (context) => const SigninScreen(),
     signUp: (context) => const SignUpScreen(),

@@ -1,7 +1,12 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_application/router/router_app.dart';
 
 void main() {
+  if (kIsWeb) {
+    // Initialize web-specific settings
+    WidgetsFlutterBinding.ensureInitialized();
+  }
   runApp(const MyApp());
 }
 
